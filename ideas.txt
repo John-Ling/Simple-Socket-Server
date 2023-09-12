@@ -1,0 +1,9 @@
+Ideas 
+
+Server is an object that contains a listening sockets and sockets of users connected
+Server object has methods that can hand off user socket to operator's socket
+
+Server will listen for connections and store them then when 
+
+Users connect to server.py which runs a listening socket
+management console where operator can choose 1-1 communication with individuals
