@@ -7,3 +7,7 @@ Server will listen for connections and store them then when
 
 Users connect to server.py which runs a listening socket
 management console where operator can choose 1-1 communication with individuals
+
+
+Client handling function will read any message sent from the operator socket and send it to the client
+same applies in the reverse
