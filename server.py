@@ -1,12 +1,8 @@
+from client import Client, Operator
+
 import socket as s
 import sys
 import threading
-import random
-import time
-
-# todo
-# add graceful shutdown
-# allow management console to perform 1-1 half-duplex communication with selected client
 
 def main():
     HOST = None
@@ -28,19 +24,18 @@ def main():
     return
 
 class Server:
-    def __init__(self, serverAddress, serverPort):
-        self.__HOST = serverAddress
-        self.__PORT = serverPort
+    def __init__(self, host, port):
+        self.__HOST = host
+        self.__PORT = port
         self.__OPERATOR_PORT = 2000 # used by management console to connect
-        self.sockets = []
+        self.clients = {}
         self.__endThread = False
-        self.operatorActive = False
 
         self.listeningSocket = s.socket(s.AF_INET, s.SOCK_STREAM)
-        self.listeningSocket.bind((self.__HOST, self.__PORT))
+        self.listeningSocket.bind((host, port))
 
         self.operatorSocket = s.socket(s.AF_INET, s.SOCK_STREAM)
-        self.operatorSocket.bind((self.__HOST, self.__OPERATOR_PORT))
+        self.operatorSocket.bind((host, self.__OPERATOR_PORT))
         
         # start listening thread
         self.listeningThread = threading.Thread(target=self.listen, args=(self.listeningSocket, False))
@@ -58,61 +53,80 @@ class Server:
         return
     
     def listen(self, socket, operator):
-        print("Starting listening thread")
+        print("Starting Listening Thread")
         with socket:
             socket.listen()
             while not self.__endThread:
-                try:
-                    clientSocket, address = socket.accept()
-                    print(f"Received connection {address}")
+                clientSocket, address = socket.accept()
+                handlingMethod = self.handle_client
 
-                    target = self.handle_client
-                    if operator:
-                        target = self.handle_operator
+                if operator:
+                    client = Operator(clientSocket)
+                    handlingMethod = self.handle_operator
+                else:
+                    client = Client(clientSocket)
 
-                    communicationThread = threading.Thread(target=target, args=(clientSocket, address))
-
-                    if not operator:
-                        self.sockets.append(clientSocket)
-                    communicationThread.start()
-                except s.timeout:
-                    pass
+                print(f"Received Connection {address}")
+                communicationThread = threading.Thread(target=handlingMethod, args=(client,))
+                communicationThread.start()
         return
 
-
-    def handle_client(self, clientSocket, address):
-        # display message if management console has not engaged conversation
+    def handle_client(self, client):
+        host, port = client.socket.getpeername()
+        self.clients[f"{host}:{port}"] = client
         sent = False
+
+        # put client in "waiting room" until operator connects and selects them
         while not self.__endThread:
-            if self.operatorActive:
-                clientSocket.sendall(b"$OPERATOR_CONNECT")
+            if client.operatorConnected:
+                client.socket.sendall(b"$OPERATOR_CONNECT")
                 break
             else:
                 if not sent:
-                    clientSocket.sendall(b"No connection")
+                    client.socket.sendall(b"$OPERATOR_NOT_ONLINE")
                     sent = True
+
+        del self.clients[f"{host}:{port}"]
         return
     
-    def handle_operator(self, operatorSocket, address):
-        self.operatorActive = True
-        operatorSocket.sendall(bytes("Welcome operator", "utf-8"))
-        clientSocket = random.choice(self.sockets)
-        
-        self.begin_communication(clientSocket, operatorSocket)
+    def handle_operator(self, operator):
+        availableSockets = ""
+        for client in self.clients.values():
+            address, port = client.socket.getpeername()
+            availableSockets += f"{address}:{port}\n"
 
-        operatorSocket.sendall(b"Shutting down")
-        operatorSocket.close()
+        operator.socket.sendall(f"Welcome Operator\nAvailable Connections\n{availableSockets}".encode())
+        selectedAddress = operator.socket.recv(1024).decode()
+        if selectedAddress in self.clients:
+            client = self.clients[selectedAddress]
+            client.operatorConnected = True
+
+            operator.socket.sendall(b"$CONNECTION_SUCCESS")
+            self.begin_communication(client, operator)
+        else:
+            operator.socket.sendall(b"$CONNECTION_FAILURE")
         return
 
-    def begin_communication(self, clientSocket, operatorSocket):
-        while not self.__endThread:
-            operatorMessage = operatorSocket.recv(1024)
-            clientSocket.sendall(operatorMessage)
-            clientMessage = clientSocket.recv(1024)
-            operatorSocket.sendall(clientMessage)
-        
+    def begin_communication(self, client, operator):
+        # begin two-way communication between operator and client
+        try:
+            while not self.__endThread:
+                operatorMessage = operator.socket.recv(1024)
+                if operatorMessage == b"$DISCONNECT":
+                    client.socket.sendall(b"$DISCONNECT")
+                    break
+                client.socket.sendall(operatorMessage)
+                clientMessage = client.socket.recv(1024)
+                if clientMessage == b"$DISCONNECT":
+                    operator.socket.sendall(b"$DISCONNECT")
+                    break
+                operator.socket.sendall(clientMessage)
+        except:
+            print("Could not connect")
+        finally:
+            client.socket.close()
+            operator.socket.close()
         return
-            
 
     def get_host(self):
         return self.__HOST

@@ -4,3 +4,4 @@ Lib/*
 Scripts/*
 test.*
 pyvenv.cfg
+__pycache__

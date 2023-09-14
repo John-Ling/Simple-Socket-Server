@@ -1,5 +1,5 @@
 import sys
-import socket
+import socket as s
 
 def main():
     HOST = sys.argv[1]
@@ -7,35 +7,59 @@ def main():
 
     operatorConnected = False
 
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as clientSocket:
+    with s.socket(s.AF_INET, s.SOCK_STREAM) as socket:
         print(f"Connecting to {HOST}:{PORT}")
-        clientSocket.connect((HOST, PORT))
+        socket.connect((HOST, PORT))
 
-        while True:
-            try:
-                data = clientSocket.recv(1024)
+        # try:
+        #     data = socket.recv(1024)
+        #     if data == b"$OPERATOR_CONNECT":
+        #         print("Operator Connected")
+        #         operatorConnected = True
+        #     elif data == b"$OPERATOR_OFFLINE":
+        #         print("Operator Offline")
+        #         # wait until operator connects or user exits
+        #         data = socket.recv(1024)
+        #         if data == b"$OPERATOR_CONNECT":
+        #             pass
+        # except KeyboardInterrupt:
+        #     print("Shutting")
+        #     socket.sendall(b"$DISCONNECT")
+
+        try:
+            while True:
+                data = socket.recv(1024)
                 if data == b"$DISCONNECT":
                     break
                 
                 if data == b"$OPERATOR_CONNECT":
-                    print("Operator Connected")
                     operatorConnected = True
-                    data = clientSocket.recv(1024)
+                    print("Operator Connected")
+                    communication_loop(socket)
+                    break
                 
                 if not operatorConnected:
-                    print("Operator not online")
+                    print("Operator Offline")
                     continue
-                
-                print(f"Received data: {data!r}")
-                send = str(input(">"))
+        except KeyboardInterrupt:
+            print("Shutting")
+        finally:
+            socket.sendall(b"$DISCONNECT")
+    return
 
-                if send == "$DISCONNECT":
-                    break
+def communication_loop(socket):
+    while True:
+        data = socket.recv(1024)
+        if data == b"$DISCONNECT":
+            break
 
-                clientSocket.sendall(bytes(send, "utf-8"))
-            except KeyboardInterrupt:
-                break
-
+        print(data.decode())
+        send = str(input(">> ")).encode()
+        socket.sendall(send)
+        if send == b"$DISCONNECT":
+            break
+    
+    print("Disconnecting")
     return
 
 if __name__ == "__main__":

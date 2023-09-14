@@ -1,5 +1,4 @@
 import socket as s
-import threading
 import sys
 
 def main():
@@ -7,22 +6,48 @@ def main():
     PORT = int(sys.argv[2])
 
     with s.socket(s.AF_INET, s.SOCK_STREAM) as socket:
-        socket.connect((HOST, PORT))
-        data = socket.recv(1024)
-        print(f"{data!r}")
-        selectedPort = str(input(">"))
-        socket.sendall(bytes(selectedPort, "utf-8"))
-
-        while True:
+        try:
+            socket.connect((HOST, PORT))
             data = socket.recv(1024)
-            print(f"Received: {data!r}")
-            send = str(input(">"))
-            if send == "$DISCONNECT":
-                break
-            socket.sendall(bytes(send, "utf-8"))
-            
+            print(data.decode())
+            print("Enter IP and port to connect to")
+            selected = str(input(">> ")).encode()
+            socket.sendall(selected)
+
+            status = socket.recv(1024)
+            if status == b"$CONNECTION_FAILURE":
+                print("Failed to Connect")
+            elif status == b"$CONNECTION_SUCCESS":
+                print("Connected")
+                communication_loop(socket)
+        except KeyboardInterrupt:
+            print("Shutting")
+        finally:
+            socket.sendall(b"$DISCONNECT")
 
     return
+
+def communication_loop(socket):
+    send = str(input(">> ")).encode()
+    socket.sendall(send)
+    if send == b"$DISCONNECT":
+        print("Disconnecting")
+        return
+
+    while True:
+        data = socket.recv(1024)
+
+        if data == b"$DISCONNECT":
+            print("Client Disconnected")
+            break
+
+        print(data.decode())
+        send = str(input(">> ")).encode()
+        socket.sendall(send)
+        if send == b"$DISCONNECT":
+            print("Disconnecting")
+            break
+    print("Connection Terminated")
 
 
 if __name__ == "__main__":
