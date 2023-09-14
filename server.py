@@ -78,15 +78,19 @@ class Server:
 
         # put client in "waiting room" until operator connects and selects them
         while not self.__endThread:
+            # hand off control to the operator and begin_communication() function
             if client.operatorConnected:
-                client.socket.sendall(b"$OPERATOR_CONNECT")
+                try:
+                    client.socket.sendall(b"$OPERATOR_CONNECT")
+                except:
+                    del self.clients[f"{host}:{port}"]
                 break
-            else:
-                if not sent:
-                    client.socket.sendall(b"$OPERATOR_NOT_ONLINE")
-                    sent = True
+            if not sent:
+                client.socket.sendall(b"$OPERATOR_NOT_ONLINE")
+                sent = True
 
-        del self.clients[f"{host}:{port}"]
+        if f"{host}:{port}" in self.clients:
+            del self.clients[f"{host}:{port}"]
         return
     
     def handle_operator(self, operator):
@@ -98,12 +102,18 @@ class Server:
         operator.socket.sendall(f"Welcome Operator\nAvailable Connections\n{availableSockets}".encode())
         selectedAddress = operator.socket.recv(1024).decode()
         if selectedAddress in self.clients:
-            client = self.clients[selectedAddress]
-            client.operatorConnected = True
+            try:
+                client = self.clients[selectedAddress]
+                client.operatorConnected = True
 
-            operator.socket.sendall(b"$CONNECTION_SUCCESS")
-            self.begin_communication(client, operator)
+                operator.socket.sendall(b"$CONNECTION_SUCCESS")
+
+                self.begin_communication(client, operator)
+            except ConnectionResetError:
+                print("Problem")
+                operator.socket.sendall(b"$CONNECTION_FAILURE")
         else:
+            print("Problem 2")
             operator.socket.sendall(b"$CONNECTION_FAILURE")
         return
 
@@ -122,7 +132,16 @@ class Server:
                     break
                 operator.socket.sendall(clientMessage)
         except:
-            print("Could not connect")
+            print("Connection Severed")
+            try:
+                operator.socket.sendall(b"$DISCONNECT")
+            except:
+                pass
+            
+            try:
+                client.socket.sendall(b"$DISCONNECT")
+            except:
+                pass
         finally:
             client.socket.close()
             operator.socket.close()
