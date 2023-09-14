@@ -12,7 +12,7 @@ def main():
             print(data.decode())
             print("Enter IP and port to connect to")
             selected = str(input(">> ")).encode()
-            socket.sendall(selected)
+            send_message(socket, selected)
 
             status = socket.recv(1024)
             if status == b"$CONNECTION_FAILURE":
@@ -27,9 +27,14 @@ def main():
 
     return
 
+def send_message(socket, message):
+    header = len(message).to_bytes(4, "big")
+    socket.sendall(header + message)
+    return
+
 def communication_loop(socket):
     send = str(input(">> ")).encode()
-    socket.sendall(send)
+    send_message(socket, send)
     if send == b"$DISCONNECT":
         print("Disconnecting")
         return
@@ -43,7 +48,7 @@ def communication_loop(socket):
 
         print(data.decode())
         send = str(input(">> ")).encode()
-        socket.sendall(send)
+        send_message(socket, send)
         if send == b"$DISCONNECT":
             print("Disconnecting")
             break

@@ -10,7 +10,7 @@ def main():
     with s.socket(s.AF_INET, s.SOCK_STREAM) as socket:
         print(f"Connecting to {HOST}:{PORT}")
         socket.connect((HOST, PORT))
-        statusVisible = False
+
         # waiting room code
         while True:
             data = socket.recv(1024)
@@ -24,10 +24,12 @@ def main():
                 break
             
             if not operatorConnected:
-                if not statusVisible:
-                    print("Operator Offline")
+                print("Operator Offline")
+    return
 
-        print("Shutting")
+def send_message(socket, message):
+    header = len(message).to_bytes(4, "big")
+    socket.sendall(header + message)
     return
 
 def communication_loop(socket):
@@ -38,11 +40,11 @@ def communication_loop(socket):
 
         print(data.decode())
         send = str(input(">> ")).encode()
-        socket.sendall(send)
+        send_message(socket, send)
         if send == b"$DISCONNECT":
             break
     
-    print("Disconnecting")
+    print("Connection Terminated")
     return
 
 if __name__ == "__main__":
