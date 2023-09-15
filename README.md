@@ -1,5 +1,5 @@
 # Simple-Socket-Server
-Made a simple socket server because I could.
+Made a socket server because I could.
 
 ## How to use
 Users use basic_client.py to connect to the server and wait until an operator connects and selects them. 
