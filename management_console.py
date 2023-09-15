@@ -1,20 +1,27 @@
 import socket as s
 import sys
 
+HEADER_SIZE = 4
+BUFFER_SIZE = 1024
+
 def main():
     HOST = sys.argv[1]
     PORT = int(sys.argv[2])
 
     with s.socket(s.AF_INET, s.SOCK_STREAM) as socket:
         try:
-            socket.connect((HOST, PORT))
-            data = socket.recv(1024)
+            try:
+                socket.connect((HOST, PORT))
+            except ConnectionRefusedError:
+                print(f"Could not connect to {HOST}:{PORT}")
+                quit()
+            data = receive_message(socket)
             print(data.decode())
             print("Enter IP and port to connect to")
             selected = str(input(">> ")).encode()
             send_message(socket, selected)
 
-            status = socket.recv(1024)
+            status = receive_message(socket)
             if status == b"$CONNECTION_FAILURE":
                 print("Failed to Connect")
             elif status == b"$CONNECTION_SUCCESS":
@@ -22,8 +29,6 @@ def main():
                 communication_loop(socket)
         except KeyboardInterrupt:
             print("Shutting")
-        finally:
-            socket.sendall(b"$DISCONNECT")
 
     return
 
@@ -31,6 +36,21 @@ def send_message(socket, message):
     header = len(message).to_bytes(4, "big")
     socket.sendall(header + message)
     return
+
+def receive_message(socket):
+    header = socket.recv(HEADER_SIZE)
+    messageLength = int.from_bytes(header[0:HEADER_SIZE], "big")
+    chunks = []
+    received = 0
+    while received < messageLength:
+        chunk  = socket.recv(min(messageLength - received, BUFFER_SIZE))
+        
+        if not chunk:
+            raise RuntimeError
+        chunks.append(chunk)
+        received += len(chunk)
+
+    return b"".join(chunks)
 
 def communication_loop(socket):
     send = str(input(">> ")).encode()
@@ -40,7 +60,7 @@ def communication_loop(socket):
         return
 
     while True:
-        data = socket.recv(1024)
+        data = receive_message(socket)
 
         if data == b"$DISCONNECT":
             print("Client Disconnected")
@@ -53,7 +73,6 @@ def communication_loop(socket):
             print("Disconnecting")
             break
     print("Connection Terminated")
-
 
 if __name__ == "__main__":
     main()

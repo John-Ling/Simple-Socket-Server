@@ -4,7 +4,6 @@ import socket as s
 import sys
 import threading
 
-
 def main():
     HOST = None
     PORT = None
@@ -24,7 +23,6 @@ def main():
         server.end_server()
     return
 
-
 class Server:
     def __init__(self, host, port):
         self.__HOST = host
@@ -35,34 +33,29 @@ class Server:
         self.clients = {}
         self.__endThread = False
 
-        self.listeningSocket = s.socket(s.AF_INET, s.SOCK_STREAM)
-        self.listeningSocket.bind((host, port))
+        clientSocket = s.socket(s.AF_INET, s.SOCK_STREAM)
+        clientSocket.bind((host, port))
 
-        self.operatorSocket = s.socket(s.AF_INET, s.SOCK_STREAM)
-        self.operatorSocket.bind((host, self.__OPERATOR_PORT))
+        operatorSocket = s.socket(s.AF_INET, s.SOCK_STREAM)
+        operatorSocket.bind((host, self.__OPERATOR_PORT))
         
-        # start listening thread
-        self.listeningThread = threading.Thread(target=self.listen, args=(self.listeningSocket, False))
-        self.listeningThread.daemon = True
-        self.listeningThread.start()
+        clientThread = threading.Thread(target=self.listen, args=(clientSocket, False))
+        clientThread.daemon = True
+        clientThread.start()
 
-        self.operatorThread = threading.Thread(target=self.listen, args=(self.operatorSocket, True))
-        self.operatorThread.daemon = True
-        self.operatorThread.start()
+        operatorThread = threading.Thread(target=self.listen, args=(operatorSocket, True))
+        operatorThread.daemon = True
+        operatorThread.start()
 
     def end_server(self):
         self.__endThread = True
-        self.listeningThread.join(timeout=1)
-        self.operatorThread.join(timeout=1)
         return
     
-
     def receive_data(self, socket):
         # reads n number of bytes from socket where n is the length of the message
         # in the packet header
 
         header = socket.recv(self.__HEADER_SIZE)
-
         messageLength = int.from_bytes(header[0:self.__HEADER_SIZE], "big")
         chunks = []
         received = 0
@@ -76,7 +69,11 @@ class Server:
     
         return b"".join(chunks)
 
-    
+    def send_data(self, socket, message):
+        header = len(message).to_bytes(self.__HEADER_SIZE, "big")
+        socket.sendall(header + message)
+        return
+
     def listen(self, socket, operator):
         print("Starting Listening Thread")
         with socket:
@@ -107,13 +104,13 @@ class Server:
             # hand off control to the operator and begin_communication() function
             if client.operatorConnected:
                 try:
-                    client.socket.sendall(b"$OPERATOR_CONNECT")
+                    self.send_data(client.socket, b"$OPERATOR_CONNECT")
                 except: # remove stale socket connection if client has already left
                     del self.clients[socketString]
                 break
 
             if not sent:
-                client.socket.sendall(b"$OPERATOR_NOT_ONLINE")
+                self.send_data(client.socket, b"$OPERATOR_NOT_ONLINE")
                 sent = True
 
         if socketString in self.clients:
@@ -126,14 +123,13 @@ class Server:
             address, port = client.socket.getpeername()
             availableSockets += f"{address}:{port}\n"
 
-        operator.socket.sendall(f"Welcome Operator\nAvailable Connections\n{availableSockets}".encode())
-        # selectedAddress = operator.socket.recv(1024).decode()
+        self.send_data(operator.socket, f"Welcome Operator\nAvailable Connections\n{availableSockets}".encode())
         selectedAddress = self.receive_data(operator.socket).decode()
         if selectedAddress in self.clients:
             client = self.clients[selectedAddress]
             client.operatorConnected = True
 
-            operator.socket.sendall(b"$CONNECTION_SUCCESS")
+            self.send_data(operator.socket, b"$CONNECTION_SUCCESS")
 
             self.begin_communication(client, operator)
         return
@@ -143,25 +139,28 @@ class Server:
         try:
             while not self.__endThread:
                 operatorMessage = self.receive_data(operator.socket)
+
                 if operatorMessage == b"$DISCONNECT":
-                    client.socket.sendall(b"$DISCONNECT")
+                    self.send_data(client.socket, b"$DISCONNECT")
                     break
-                client.socket.sendall(operatorMessage)
-                # clientMessage = client.socket.recv(1024)
+
+                self.send_data(client.socket, operatorMessage)
                 clientMessage = self.receive_data(client.socket)
+
                 if clientMessage == b"$DISCONNECT":
-                    operator.socket.sendall(b"$DISCONNECT")
+                    self.send_data(operator.socket, b"$DISCONNECT")
                     break
-                operator.socket.sendall(clientMessage)
+
+                self.send_data(operator.socket, clientMessage)
         except:
             print("Connection Severed")
             try:
-                operator.socket.sendall(b"$DISCONNECT")
+                self.send_data(operator.socket, b"$DISCONNECT")
             except:
                 pass
             
             try:
-                client.socket.sendall(b"$DISCONNECT")
+                self.send_data(client.socket, b"$DISCONNECT")
             except:
                 pass
         finally:
@@ -174,7 +173,6 @@ class Server:
     
     def get_port(self):
         return self.__PORT
-
 
 if __name__ == "__main__":
     main()

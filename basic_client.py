@@ -1,6 +1,9 @@
 import sys
 import socket as s
 
+HEADER_SIZE = 4
+BUFFER_SIZE = 1024
+
 def main():
     HOST = sys.argv[1]
     PORT = int(sys.argv[2])
@@ -9,11 +12,15 @@ def main():
 
     with s.socket(s.AF_INET, s.SOCK_STREAM) as socket:
         print(f"Connecting to {HOST}:{PORT}")
-        socket.connect((HOST, PORT))
-
+        try:
+            socket.connect((HOST, PORT))
+        except ConnectionRefusedError:
+            print(f"Could not connect to {HOST}:{PORT}")
+            quit()
+        
         # waiting room code
         while True:
-            data = socket.recv(1024)
+            data = receive_message(socket)
             if data == b"$DISCONNECT":
                 break
             
@@ -32,10 +39,26 @@ def send_message(socket, message):
     socket.sendall(header + message)
     return
 
+def receive_message(socket):
+    header = socket.recv(HEADER_SIZE)
+    messageLength = int.from_bytes(header[0:HEADER_SIZE], "big")
+    chunks = []
+    received = 0
+    while received < messageLength:
+        chunk  = socket.recv(min(messageLength - received, BUFFER_SIZE))
+        
+        if not chunk:
+            raise RuntimeError
+        chunks.append(chunk)
+        received += len(chunk)
+
+    return b"".join(chunks)
+
 def communication_loop(socket):
     while True:
-        data = socket.recv(1024)
+        data = receive_message(socket)
         if data == b"$DISCONNECT":
+            print("Operator Disconnected")
             break
 
         print(data.decode())
